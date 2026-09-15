@@ -14,8 +14,8 @@ question data and exporting it into A/B/C/D format.
 pip install -r requirements.txt
 ```
 
-## Run Tool
+## Build .exe
 
 ```bash
-python main.py --url "https://quizlet.com/..." --output questions.txt
+pyinstaller --noconfirm --clean --onedir --windowed --name QuizletCrawler --icon=icon.ico main.py
 ```
