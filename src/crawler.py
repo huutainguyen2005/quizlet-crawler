@@ -1,3 +1,7 @@
+from .playwright_config import configure_playwright_browser_path
+
+configure_playwright_browser_path()
+
 from playwright.sync_api import sync_playwright
 
 

@@ -15,22 +15,17 @@ class QuizletParser:
         self,
         max_questions: int = MAX_QUESTIONS
     ):
+        self.failed_cards: list[dict] = []
+
         self.max_questions = min(
             max_questions,
             self.MAX_QUESTIONS
         )
 
-        # Cards that were found but could not be converted into
-        # a valid A/B/C/D question are kept here so the user can
-        # manually fix the source data.
-        self.failed_cards: list[dict[str, str | int]] = []
-
     def parse(
         self,
         html: str
     ) -> list[Question]:
-
-        self.failed_cards = []
 
         print(
             "[INFO] Trying DOM parser..."
@@ -95,76 +90,41 @@ class QuizletParser:
         )
 
         print(
-            f"[DEBUG] Found "
-            f"{len(cards)} DOM term cards."
+            f"[DEBUG] Found {len(cards)} DOM term cards."
         )
 
         questions = []
         seen = set()
-        rejected = 0
 
-        for index, card in enumerate(
-            cards,
-            start=1
-        ):
+        for index, card in enumerate(cards, start=1):
 
             if len(questions) >= self.max_questions:
                 break
 
-            question, reason = self._parse_card(
-                card
-            )
+            question, reason = self._parse_card(card)
 
             if question is None:
-
-                rejected += 1
-
                 failure = self._build_failed_card(
-                    index,
-                    card,
-                    reason
+                    index, card, reason
                 )
+                self.failed_cards.append(failure)
 
-                self.failed_cards.append(
-                    failure
-                )
-
-                print(
-                    f"[FAILED] CARD #{index}: "
-                    f"{reason}"
-                )
-
+                print(f"[FAILED] CARD #{index}: {reason}")
                 if failure["question"]:
-                    print(
-                        f"[FAILED] Question: "
-                        f"{failure['question']}"
-                    )
-
-                self._debug_card(
-                    index,
-                    card
-                )
-
+                    print(f"[FAILED] Question: {failure['question']}")
+                self._debug_card(index, card)
                 continue
 
-            key = self._normalize_key(
-                question.question
-            )
-
+            key = self._normalize_key(question.question)
             if key in seen:
                 continue
 
             seen.add(key)
+            questions.append(question)
 
-            questions.append(
-                question
-            )
-
-        if rejected:
-
+        if self.failed_cards:
             print(
-                f"[WARNING] Rejected "
-                f"{rejected} cards."
+                f"[WARNING] Failed {len(self.failed_cards)} card(s)."
             )
 
         return questions
@@ -178,64 +138,49 @@ class QuizletParser:
         card
     ) -> tuple[Question | None, str]:
 
-        term_texts = card.select(
-            ".TermText"
-        )
-
+        term_texts = card.select(".TermText")
         texts = []
 
         for element in term_texts:
-
-            text = element.get_text(
-                "\n",
-                strip=True
-            )
-
             text = html_lib.unescape(
-                text
+                element.get_text("\n", strip=True)
             ).strip()
 
-            if not text:
-                continue
-
-            if text not in texts:
-
-                texts.append(
-                    text
-                )
+            if text and text not in texts:
+                texts.append(text)
 
         if len(texts) < 2:
             return None, "Not enough term data."
 
+        # Find the question side first. Do NOT use it as the answer
+        # source because its A/B/C/D labels are merely the choices.
         question_text = None
-        answer = None
-
-        # ----------------------------------------------
-        # Find question containing A/B/C/D
-        # ----------------------------------------------
-
         for text in texts:
-
-            if self._looks_like_mcq(
-                text
-            ):
-
+            choices = self._extract_choices(text)
+            if len(choices) >= 2:
                 question_text = text
                 break
 
         if question_text is None:
-            return None, "No question with four choices A/B/C/D was detected."
+            return None, "No multiple-choice question detected."
 
-        # ----------------------------------------------
-        # Find correct answer
-        # ----------------------------------------------
+        choices = self._extract_choices(question_text)
+        missing = [
+            letter for letter in ("A", "B", "C", "D")
+            if letter not in choices
+        ]
 
+        if missing:
+            return None, "Missing choice(s): " + ", ".join(missing)
+
+        # Only inspect term texts OTHER than the question for the correct
+        # answer. This prevents a question beginning with "A." from being
+        # incorrectly interpreted as answer A.
+        answer = None
         for text in texts:
-
-            answer = self._extract_answer(
-                text
-            )
-
+            if text == question_text:
+                continue
+            answer = self._extract_answer(text, choices)
             if answer:
                 break
 
@@ -248,27 +193,6 @@ class QuizletParser:
         )
 
         if question is None:
-            choices = self._extract_choices(
-                question_text
-            )
-
-            if len(choices) != 4:
-                missing = [
-                    letter
-                    for letter in ("A", "B", "C", "D")
-                    if letter not in choices
-                ]
-
-                if missing:
-                    return None, (
-                        "Missing choice(s): "
-                        + ", ".join(missing)
-                    )
-
-                return None, (
-                    f"Expected 4 choices, found {len(choices)}."
-                )
-
             return None, "Invalid question format."
 
         return question, "OK"
@@ -279,43 +203,59 @@ class QuizletParser:
 
     def _extract_answer(
         self,
-        text: str
+        text: str,
+        choices: dict[str, str] | None = None
     ) -> str | None:
 
-        text = text.strip()
+        text = re.sub(
+            r"\s+",
+            " ",
+            html_lib.unescape(text)
+        ).strip()
 
-        # -----------------------------
-        # A / B / C / D
-        # -----------------------------
-
-        if text.upper() in {
-            "A",
-            "B",
-            "C",
-            "D"
-        }:
-
+        if text.upper() in {"A", "B", "C", "D"}:
             return text.upper()
 
-        # -----------------------------
-        # A. answer
-        # A) answer
-        # A: answer
-        # -----------------------------
-
+        # Answer: D / Đáp án: D / Correct answer: D
         match = re.match(
-            r"^\s*([A-D])\s*[\.\):]\s*",
+            r"^(?:answer|correct answer|đáp án)\s*[:\-]?\s*([A-D])\b",
             text,
             re.IGNORECASE
         )
-
         if match:
+            return match.group(1).upper()
 
-            return match.group(
-                1
-            ).upper()
+        # D. answer / D) answer / D: answer
+        match = re.match(
+            r"^\s*([A-D])\s*[\.\):]\s*(.*)$",
+            text,
+            re.IGNORECASE
+        )
+        if match:
+            letter = match.group(1).upper()
+            value = match.group(2).strip()
+            if choices is None or not value:
+                return letter
+            if self._same_text(value, choices.get(letter, "")):
+                return letter
+            # A labelled answer can still be authoritative if it contains
+            # the answer text; the label itself is the useful signal.
+            return letter
+
+        # Quizlet/JSON-LD may expose the correct answer as the full text.
+        if choices:
+            for letter, choice in choices.items():
+                if self._same_text(text, choice):
+                    return letter
 
         return None
+
+    @staticmethod
+    def _same_text(left: str, right: str) -> bool:
+        normalize = lambda value: " ".join(
+            html_lib.unescape(value).lower().split()
+        )
+        return normalize(left) == normalize(right)
 
     # ==================================================
     # MCQ DETECTION
@@ -325,16 +265,7 @@ class QuizletParser:
         self,
         text: str
     ) -> bool:
-
-        choices = self._extract_choices(
-            text
-        )
-
-        # Treat a card as an MCQ candidate when at least two
-        # labelled choices are present. This is intentional:
-        # malformed cards (for example A/B/C with missing D)
-        # must be reported as FAILED instead of silently ignored.
-        return len(choices) >= 2
+        return len(self._extract_choices(text)) >= 2
 
     # ==================================================
     # EXTRACT CHOICES
@@ -345,62 +276,21 @@ class QuizletParser:
         text: str
     ) -> dict[str, str]:
 
-        text = html_lib.unescape(
-            text
-        ).strip()
+        text = html_lib.unescape(text).strip()
+        text = re.sub(r"\s+", " ", text).strip()
 
         choices = {}
 
-        # ------------------------------------------------
-        # Normalize all whitespace
-        # ------------------------------------------------
-
-        text = re.sub(
-            r"\s+",
-            " ",
-            text
-        ).strip()
-
-        # ------------------------------------------------
-        # Important:
-        #
-        # Supports:
-        #
-        # Question?
-        # A. answer
-        # B. answer
-        #
-        # AND
-        #
-        # Question? A. answer B. answer C. answer D. answer
-        # ------------------------------------------------
-
         pattern = re.compile(
-            r"(?:^|\s)"
-            r"([A-D])"
-            r"\s*[\.\):]\s*"
-            r"(.*?)"
-            r"(?=\s+[A-D]\s*[\.\):]\s+|$)",
+            r"(?:^|\s)([A-D])\s*[\.\):]\s*"
+            r"(.*?)(?=\s+[A-D]\s*[\.\):]\s+|$)",
             re.IGNORECASE
         )
 
-        matches = pattern.findall(
-            text
-        )
-
-        for letter, value in matches:
-
-            letter = letter.upper()
-
-            value = re.sub(
-                r"\s+",
-                " ",
-                value
-            ).strip()
-
+        for letter, value in pattern.findall(text):
+            value = re.sub(r"\s+", " ", value).strip()
             if value:
-
-                choices[letter] = value
+                choices[letter.upper()] = value
 
         return choices
 
@@ -414,20 +304,9 @@ class QuizletParser:
         answer: str
     ) -> Question | None:
 
-        text = html_lib.unescape(
-            text
-        ).strip()
-
-        # Normalize whitespace
         normalized_text = re.sub(
-            r"\s+",
-            " ",
-            text
+            r"\s+", " ", html_lib.unescape(text)
         ).strip()
-
-        # ------------------------------------------------
-        # Find first choice
-        # ------------------------------------------------
 
         first_choice = re.search(
             r"\s+[A-D]\s*[\.\):]\s+",
@@ -438,18 +317,7 @@ class QuizletParser:
         if first_choice is None:
             return None
 
-        question_text = normalized_text[
-            :first_choice.start()
-        ].strip()
-
-        # ------------------------------------------------
-        # Remove question number
-        #
-        # 10. What is ...
-        # ↓
-        # What is ...
-        # ------------------------------------------------
-
+        question_text = normalized_text[:first_choice.start()].strip()
         question_text = re.sub(
             r"^\s*\d+\s*[\.\)]\s*",
             "",
@@ -459,22 +327,12 @@ class QuizletParser:
         if not question_text:
             return None
 
-        choices = self._extract_choices(
-            normalized_text
-        )
-
-        if len(choices) != 4:
+        choices = self._extract_choices(normalized_text)
+        if set(choices) != {"A", "B", "C", "D"}:
             return None
 
         answer = answer.strip().upper()
-
-        if answer not in {
-            "A",
-            "B",
-            "C",
-            "D"
-        }:
-
+        if answer not in {"A", "B", "C", "D"}:
             return None
 
         return Question(
@@ -488,59 +346,33 @@ class QuizletParser:
             answer=answer
         )
 
-    # ==================================================
-    # FAILED CARD
-    # ==================================================
-
     def _build_failed_card(
         self,
         index: int,
         card,
         reason: str
-    ) -> dict[str, str | int]:
-
-        term_texts = card.select(
-            ".TermText"
-        )
-
+    ) -> dict:
         texts = []
-
-        for element in term_texts:
-
-            text = element.get_text(
-                " ",
-                strip=True
-            )
-
+        for element in card.select(".TermText"):
             text = html_lib.unescape(
-                text
+                element.get_text(" ", strip=True)
             ).strip()
-
             if text and text not in texts:
                 texts.append(text)
 
-        # Try to extract the question even when the card is malformed.
-        question_text = ""
-
+        question_preview = ""
         for text in texts:
-            first_choice = re.search(
-                r"\s+[A-D]\s*[\.\):]\s+",
-                re.sub(r"\s+", " ", text),
-                re.IGNORECASE
-            )
-
-            if first_choice:
-                question_text = re.sub(
-                    r"^\s*\d+\s*[\.\)]\s*",
-                    "",
-                    re.sub(r"\s+", " ", text[:first_choice.start()]).strip()
-                )
+            if len(self._extract_choices(text)) >= 2:
+                question_preview = text
                 break
+
+        if not question_preview and texts:
+            question_preview = texts[0]
 
         return {
             "index": index,
-            "question": question_text,
-            "reason": reason
+            "reason": reason,
+            "question": question_preview
         }
 
     # ==================================================
@@ -760,13 +592,21 @@ class QuizletParser:
             "text"
         )
 
-        if not isinstance(
+        if not isinstance(answer, str):
+            return None
+
+        choices = self._extract_choices(text)
+        if set(choices) != {"A", "B", "C", "D"}:
+            return None
+
+        answer_letter = self._extract_answer(
             answer,
-            str
-        ):
+            choices
+        )
+        if answer_letter is None:
             return None
 
         return self._build_question(
             text,
-            answer
+            answer_letter
         )

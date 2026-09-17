@@ -1,35 +1,29 @@
 # Quizlet Crawler
 
-Simple Python CLI tool for extracting publicly available Quizlet question data and exporting it into A/B/C/D format.
+Simple Python GUI tool for extracting publicly available Quizlet multiple-choice question data and exporting it into A/B/C/D format.
 
 ## Requirements
 
-* Python 3.10+
-* Internet connection
-* Playwright Chromium
+- Windows
+- Python 3.14+
+- Internet connection
 
 ## Installation
 
 ### 1. Clone the repository
 
-```bash
+```cmd
 git clone <repository-url>
 cd quizlet-crawler
 ```
 
 ### 2. Create a virtual environment
 
-```bash
+```cmd
 py -3.14 -m venv .venv
 ```
 
 ### 3. Activate the virtual environment
-
-**Windows PowerShell:**
-
-```powershell
-.venv\Scripts\Activate.ps1
-```
 
 **Windows CMD:**
 
@@ -37,55 +31,91 @@ py -3.14 -m venv .venv
 .venv\Scripts\activate
 ```
 
+**Windows PowerShell:**
+
+```powershell
+.venv\Scripts\Activate.ps1
+```
+
 ### 4. Install dependencies
 
-```bash
+```cmd
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ### 5. Install Playwright Chromium
 
-```bash
+For running the Python source:
+
+```cmd
 python -m playwright install chromium
 ```
 
-## Run
+### 6. Run
 
-Run the crawler directly with Python:
-
-```bash
+```cmd
 python main.py
 ```
 
-## Build `.exe`
+## Build a Standalone `.exe`
 
-Build the Windows executable with PyInstaller:
+The project includes `QuizletCrawler.spec` and `build.bat` so Chromium is bundled into the PyInstaller application.
 
-```bash
-python -m PyInstaller --noconfirm --clean --onedir --windowed --name QuizletCrawler --icon=icon.ico main.py
+From **Windows CMD**:
+
+```cmd
+build.bat
 ```
 
-The built application will be located at:
+The executable will be created at:
 
 ```text
-dist/
-└── QuizletCrawler/
-    ├── QuizletCrawler.exe
-    └── ...
+dist\QuizletCrawler\QuizletCrawler.exe
 ```
 
-### Notes
+The build process automatically:
 
-* `.venv/`, `build/`, and `dist/` are not included in the repository.
-* `PyInstaller` and `Pillow` are included in `requirements.txt` because they are required for building the `.exe` with the application icon.
-* Playwright Chromium must be installed separately using:
+1. Activates `.venv`.
+2. Installs Python dependencies from `requirements.txt`.
+3. Sets `PLAYWRIGHT_BROWSERS_PATH=0`.
+4. Installs Chromium into the Playwright package directory.
+5. Bundles that Chromium into the PyInstaller build.
+6. Configures the EXE to use its bundled Chromium.
 
-```bash
-python -m playwright install chromium
+Therefore, a user who receives `dist\QuizletCrawler\` can run the EXE without installing Python or Playwright separately.
+
+## Invalid Questions
+
+The crawler validates every multiple-choice card.
+
+A valid question must contain all four choices:
+
+```text
+A. ...
+B. ...
+C. ...
+D. ...
 ```
 
-* The generated `.exe` may require additional Playwright browser packaging if it is intended to run on a machine without Playwright/Chromium installed.
+If a Quizlet card has a typo, for example A/B/C but no D, it is **not silently discarded**. The application reports it as `[FAILED]` and shows the card number and question so it can be fixed manually.
+
+Example:
+
+```text
+[FAILED] CARD #12: Missing choice(s): D
+[FAILED] Question: Quan điểm nào cho rằng: ...
+```
+
+Only valid questions are exported.
+
+## Google Docs Export
+
+The correct answer is determined separately from the question choices. The question text itself is never treated as the correct-answer source.
+
+The Google Docs export marks the detected correct choice in red.
+
+If a card has no identifiable correct answer, it is reported as `[FAILED]` instead of exporting a potentially incorrect answer.
 
 ## Project Structure
 
@@ -94,6 +124,16 @@ quizlet-crawler/
 ├── main.py
 ├── requirements.txt
 ├── README.md
+├── QuizletCrawler.spec
+├── build.bat
 ├── .gitignore
-└── icon.ico
+├── icon.ico
+└── src/
+    ├── __init__.py
+    ├── crawler.py
+    ├── formatter.py
+    ├── google_docs.py
+    ├── models.py
+    ├── parser.py
+    └── playwright_config.py
 ```
