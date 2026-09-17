@@ -1,6 +1,16 @@
 # Quizlet Crawler
 
-Simple Python GUI tool for extracting publicly available Quizlet multiple-choice question data and exporting it into A/B/C/D format.
+Simple Python CLI tool for extracting publicly available Quizlet question data and exporting it into A/B/C/D format.
+
+## Features
+
+- Extracts publicly available Quizlet question data.
+- Supports up to 500 questions per crawl.
+- Validates that every question has choices A, B, C, and D.
+- Reports invalid questions as `FAILED` instead of silently skipping them.
+- Exports valid questions to A/B/C/D format.
+- Supports Google Docs export.
+- Can be packaged as a Windows `.exe` with Playwright Chromium bundled for the build.
 
 ## Requirements
 
@@ -25,13 +35,13 @@ py -3.14 -m venv .venv
 
 ### 3. Activate the virtual environment
 
-**Windows CMD:**
+For **CMD**:
 
 ```cmd
 .venv\Scripts\activate
 ```
 
-**Windows PowerShell:**
+For **PowerShell**:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -41,81 +51,102 @@ py -3.14 -m venv .venv
 
 ```cmd
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
-### 5. Install Playwright Chromium
+## Run from Python
 
-For running the Python source:
-
-```cmd
-python -m playwright install chromium
-```
-
-### 6. Run
+Run the crawler directly:
 
 ```cmd
 python main.py
 ```
 
-## Build a Standalone `.exe`
+The crawler will open the configured workflow and process the Quizlet URL.
 
-The project includes `QuizletCrawler.spec` and `build.bat` so Chromium is bundled into the PyInstaller application.
+## Invalid Questions
 
-From **Windows CMD**:
+The crawler validates each question before exporting it.
+
+For example, this is invalid:
+
+```text
+Question:
+Quan điểm nào cho rằng: Không gian, thời gian và vận động không liên quan với nhau ở bên ngoài vật chất?
+
+A. Quan điểm chủ nghĩa duy vật siêu hình.
+B. Quan điểm chủ nghĩa duy vật biện chứng.
+C. Quan điểm chủ nghĩa duy tâm khách quan.
+Quan điểm chủ nghĩa duy vật chất phác.
+```
+
+The question is missing choice `D`, so the crawler reports it as:
+
+```text
+[FAILED] Missing choice(s): D
+```
+
+The invalid question is not exported as a normal question. This makes it easy to find and manually fix the original Quizlet card.
+
+## Google Docs Export
+
+Only validated questions should be exported to Google Docs.
+
+The answer must match one of the four choices (`A`, `B`, `C`, or `D`). The crawler does not treat an `A/B/C/D` string appearing inside the question text as the correct answer.
+
+If a question cannot be reliably matched to a valid choice, it is reported as `FAILED` instead of being exported with a potentially incorrect answer.
+
+## Build Windows `.exe`
+
+Use the included build script:
 
 ```cmd
 build.bat
 ```
 
-The executable will be created at:
+The script prepares the Playwright browser and builds the application with PyInstaller.
+
+The output will be:
 
 ```text
+dist/
+└── QuizletCrawler/
+    ├── QuizletCrawler.exe
+    └── _internal/
+        └── ...
+```
+
+### Manual build
+
+If you prefer to build manually:
+
+```cmd
+set PLAYWRIGHT_BROWSERS_PATH=0
+python -m playwright install chromium
+python -m PyInstaller --noconfirm --clean QuizletCrawler.spec
+```
+
+The `QuizletCrawler.spec` file is configured to include the Playwright Chromium browser in the application bundle.
+
+## Important: Python vs `.exe`
+
+There are two different ways to run the project:
+
+### Run source code
+
+```cmd
+python main.py
+```
+
+In this mode, Playwright uses the browser installed for the current Python environment.
+
+### Run the built `.exe`
+
+```cmd
 dist\QuizletCrawler\QuizletCrawler.exe
 ```
 
-The build process automatically:
-
-1. Activates `.venv`.
-2. Installs Python dependencies from `requirements.txt`.
-3. Sets `PLAYWRIGHT_BROWSERS_PATH=0`.
-4. Installs Chromium into the Playwright package directory.
-5. Bundles that Chromium into the PyInstaller build.
-6. Configures the EXE to use its bundled Chromium.
-
-Therefore, a user who receives `dist\QuizletCrawler\` can run the EXE without installing Python or Playwright separately.
-
-## Invalid Questions
-
-The crawler validates every multiple-choice card.
-
-A valid question must contain all four choices:
-
-```text
-A. ...
-B. ...
-C. ...
-D. ...
-```
-
-If a Quizlet card has a typo, for example A/B/C but no D, it is **not silently discarded**. The application reports it as `[FAILED]` and shows the card number and question so it can be fixed manually.
-
-Example:
-
-```text
-[FAILED] CARD #12: Missing choice(s): D
-[FAILED] Question: Quan điểm nào cho rằng: ...
-```
-
-Only valid questions are exported.
-
-## Google Docs Export
-
-The correct answer is determined separately from the question choices. The question text itself is never treated as the correct-answer source.
-
-The Google Docs export marks the detected correct choice in red.
-
-If a card has no identifiable correct answer, it is reported as `[FAILED]` instead of exporting a potentially incorrect answer.
+The `.exe` build includes the required Chromium browser through the PyInstaller configuration. Do not assume that installing Chromium globally on another machine will fix a missing browser inside an already-built application.
 
 ## Project Structure
 
@@ -137,3 +168,18 @@ quizlet-crawler/
     ├── parser.py
     └── playwright_config.py
 ```
+
+## Gitignored Files
+
+The following local/generated files should not be committed:
+
+```text
+.venv/
+build/
+dist/
+*.spec
+__pycache__/
+*.py[cod]
+```
+
+Each developer creates their own `.venv` and installs dependencies from `requirements.txt`.
