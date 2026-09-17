@@ -407,6 +407,45 @@ class QuizletCrawlerGUI:
             )
 
             # ------------------------------------------
+            # Failed cards
+            # ------------------------------------------
+
+            failed_cards = parser.failed_cards
+
+            if failed_cards:
+
+                self._log(
+                    f"[FAILED] {len(failed_cards)} card(s) "
+                    f"could not be converted."
+                )
+
+                self._log(
+                    "[FAILED] Please fix these Quizlet cards "
+                    "manually and run the crawler again:"
+                )
+
+                for failed in failed_cards:
+
+                    question_preview = (
+                        failed.get("question", "").strip()
+                    )
+
+                    if question_preview:
+
+                        self._log(
+                            f"[FAILED] CARD #{failed['index']} | "
+                            f"{failed['reason']} | "
+                            f"{question_preview}"
+                        )
+
+                    else:
+
+                        self._log(
+                            f"[FAILED] CARD #{failed['index']} | "
+                            f"{failed['reason']}"
+                        )
+
+            # ------------------------------------------
             # Format
             # ------------------------------------------
 
@@ -594,7 +633,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# pip install -r requirements.txt
-# playwright install chromium
-# pyinstaller --noconfirm --clean --onedir --windowed --name QuizletCrawler --icon=icon.ico main.py

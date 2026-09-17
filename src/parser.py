@@ -20,10 +20,17 @@ class QuizletParser:
             self.MAX_QUESTIONS
         )
 
+        # Cards that were found but could not be converted into
+        # a valid A/B/C/D question are kept here so the user can
+        # manually fix the source data.
+        self.failed_cards: list[dict[str, str | int]] = []
+
     def parse(
         self,
         html: str
     ) -> list[Question]:
+
+        self.failed_cards = []
 
         print(
             "[INFO] Trying DOM parser..."
@@ -104,7 +111,7 @@ class QuizletParser:
             if len(questions) >= self.max_questions:
                 break
 
-            question = self._parse_card(
+            question, reason = self._parse_card(
                 card
             )
 
@@ -112,10 +119,26 @@ class QuizletParser:
 
                 rejected += 1
 
-                print(
-                    f"[WARNING] Cannot parse "
-                    f"CARD #{index}"
+                failure = self._build_failed_card(
+                    index,
+                    card,
+                    reason
                 )
+
+                self.failed_cards.append(
+                    failure
+                )
+
+                print(
+                    f"[FAILED] CARD #{index}: "
+                    f"{reason}"
+                )
+
+                if failure["question"]:
+                    print(
+                        f"[FAILED] Question: "
+                        f"{failure['question']}"
+                    )
 
                 self._debug_card(
                     index,
@@ -153,7 +176,7 @@ class QuizletParser:
     def _parse_card(
         self,
         card
-    ) -> Question | None:
+    ) -> tuple[Question | None, str]:
 
         term_texts = card.select(
             ".TermText"
@@ -182,7 +205,7 @@ class QuizletParser:
                 )
 
         if len(texts) < 2:
-            return None
+            return None, "Not enough term data."
 
         question_text = None
         answer = None
@@ -201,7 +224,7 @@ class QuizletParser:
                 break
 
         if question_text is None:
-            return None
+            return None, "No question with four choices A/B/C/D was detected."
 
         # ----------------------------------------------
         # Find correct answer
@@ -217,12 +240,38 @@ class QuizletParser:
                 break
 
         if answer is None:
-            return None
+            return None, "No correct answer (A/B/C/D) was detected."
 
-        return self._build_question(
+        question = self._build_question(
             question_text,
             answer
         )
+
+        if question is None:
+            choices = self._extract_choices(
+                question_text
+            )
+
+            if len(choices) != 4:
+                missing = [
+                    letter
+                    for letter in ("A", "B", "C", "D")
+                    if letter not in choices
+                ]
+
+                if missing:
+                    return None, (
+                        "Missing choice(s): "
+                        + ", ".join(missing)
+                    )
+
+                return None, (
+                    f"Expected 4 choices, found {len(choices)}."
+                )
+
+            return None, "Invalid question format."
+
+        return question, "OK"
 
     # ==================================================
     # ANSWER
@@ -281,7 +330,11 @@ class QuizletParser:
             text
         )
 
-        return len(choices) == 4
+        # Treat a card as an MCQ candidate when at least two
+        # labelled choices are present. This is intentional:
+        # malformed cards (for example A/B/C with missing D)
+        # must be reported as FAILED instead of silently ignored.
+        return len(choices) >= 2
 
     # ==================================================
     # EXTRACT CHOICES
@@ -434,6 +487,61 @@ class QuizletParser:
             ],
             answer=answer
         )
+
+    # ==================================================
+    # FAILED CARD
+    # ==================================================
+
+    def _build_failed_card(
+        self,
+        index: int,
+        card,
+        reason: str
+    ) -> dict[str, str | int]:
+
+        term_texts = card.select(
+            ".TermText"
+        )
+
+        texts = []
+
+        for element in term_texts:
+
+            text = element.get_text(
+                " ",
+                strip=True
+            )
+
+            text = html_lib.unescape(
+                text
+            ).strip()
+
+            if text and text not in texts:
+                texts.append(text)
+
+        # Try to extract the question even when the card is malformed.
+        question_text = ""
+
+        for text in texts:
+            first_choice = re.search(
+                r"\s+[A-D]\s*[\.\):]\s+",
+                re.sub(r"\s+", " ", text),
+                re.IGNORECASE
+            )
+
+            if first_choice:
+                question_text = re.sub(
+                    r"^\s*\d+\s*[\.\)]\s*",
+                    "",
+                    re.sub(r"\s+", " ", text[:first_choice.start()]).strip()
+                )
+                break
+
+        return {
+            "index": index,
+            "question": question_text,
+            "reason": reason
+        }
 
     # ==================================================
     # DEBUG
