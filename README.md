@@ -1,22 +1,32 @@
 # Quizlet Crawler
 
-Simple Python CLI tool for extracting publicly available Quizlet question data and exporting it into A/B/C/D format.
+A simple Python CLI tool for extracting publicly available Quizlet question data and exporting it into A/B/C/D format.
 
 ## Features
 
-- Extracts publicly available Quizlet question data.
-- Supports up to 500 questions per crawl.
-- Validates that every question has choices A, B, C, and D.
-- Reports invalid questions as `FAILED` instead of silently skipping them.
-- Exports valid questions to A/B/C/D format.
-- Supports Google Docs export.
-- Can be packaged as a Windows `.exe` with Playwright Chromium bundled for the build.
+* Extract publicly available Quizlet question data.
+* Supports up to 500 questions per crawl.
+* Supports questions with a variable number of choices.
+* Does not require every question to have A, B, C, and D.
+* Reports invalid questions when no valid choices can be extracted.
+* Exports extracted questions to A/B/C/D format.
+* Supports Google Docs export.
+* Can be packaged as a Windows `.exe`.
+* Bundles Playwright Chromium with the PyInstaller build.
 
 ## Requirements
 
-- Windows
-- Python 3.14+
-- Internet connection
+* Windows
+* Python 3.14+
+* Internet connection
+
+The project currently uses:
+
+* Playwright 1.63.0
+* Chromium 1243
+* PyInstaller
+* BeautifulSoup
+* Pillow
 
 ## Installation
 
@@ -35,13 +45,13 @@ py -3.14 -m venv .venv
 
 ### 3. Activate the virtual environment
 
-For **CMD**:
+CMD:
 
 ```cmd
 .venv\Scripts\activate
 ```
 
-For **PowerShell**:
+PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
@@ -56,69 +66,77 @@ pip install -r requirements.txt
 
 ## Run from Python
 
-Run the crawler directly:
-
 ```cmd
 python main.py
 ```
 
-The crawler will open the configured workflow and process the Quizlet URL.
+The Python version uses Playwright and Chromium installed in the current virtual environment.
 
-## Invalid Questions
+## Question Choices
 
-The crawler validates each question before exporting it.
+The crawler does **not** require every question to contain A, B, C, and D.
 
-For example, this is invalid:
-
-```text
-Question:
-Quan điểm nào cho rằng: Không gian, thời gian và vận động không liên quan với nhau ở bên ngoài vật chất?
-
-A. Quan điểm chủ nghĩa duy vật siêu hình.
-B. Quan điểm chủ nghĩa duy vật biện chứng.
-C. Quan điểm chủ nghĩa duy tâm khách quan.
-Quan điểm chủ nghĩa duy vật chất phác.
-```
-
-The question is missing choice `D`, so the crawler reports it as:
+For example, all of the following can be valid:
 
 ```text
-[FAILED] Missing choice(s): D
+A. Choice A
+B. Choice B
+C. Choice C
+D. Choice D
 ```
 
-The invalid question is not exported as a normal question. This makes it easy to find and manually fix the original Quizlet card.
+```text
+A. Choice A
+B. Choice B
+C. Choice C
+```
 
-## Google Docs Export
+```text
+A. Choice A
+B. Choice B
+```
 
-Only validated questions should be exported to Google Docs.
+The crawler only requires that valid choices can be extracted.
 
-The answer must match one of the four choices (`A`, `B`, `C`, or `D`). The crawler does not treat an `A/B/C/D` string appearing inside the question text as the correct answer.
+A question with no valid choices should be reported as `FAILED`.
 
-If a question cannot be reliably matched to a valid choice, it is reported as `FAILED` instead of being exported with a potentially incorrect answer.
+## Answer Validation
 
-## Build Windows `.exe`
+The crawler should only export an answer when it can reliably determine that the answer belongs to one of the extracted choices.
 
-Use the included build script:
+Letters such as `A`, `B`, `C`, or `D` appearing inside the question text must not be incorrectly interpreted as the answer.
+
+If the correct answer cannot be determined reliably, the crawler should report the question as `FAILED` instead of guessing.
+
+## Build Windows EXE
+
+The project uses `QuizletCrawler.spec` to configure PyInstaller and bundle Playwright Chromium.
+
+### Recommended build
+
+Run:
 
 ```cmd
 build.bat
 ```
 
-The script prepares the Playwright browser and builds the application with PyInstaller.
+The build process:
 
-The output will be:
+1. Installs the required Python packages.
+2. Sets `PLAYWRIGHT_BROWSERS_PATH=0`.
+3. Installs Chromium locally inside the Playwright package.
+4. Builds the application using `QuizletCrawler.spec`.
+5. Includes the Chromium browser in the generated application.
+
+The generated application is:
 
 ```text
-dist/
-└── QuizletCrawler/
-    ├── QuizletCrawler.exe
-    └── _internal/
-        └── ...
+dist\QuizletCrawler\QuizletCrawler.exe
 ```
 
 ### Manual build
 
-If you prefer to build manually:
+If you want to build manually:
 
 ```cmd
 set PLAYWRIGHT_BROWSERS_PATH=0
@@ -126,27 +144,48 @@ python -m playwright install chromium
 python -m PyInstaller --noconfirm --clean QuizletCrawler.spec
 ```
 
-The `QuizletCrawler.spec` file is configured to include the Playwright Chromium browser in the application bundle.
+## Playwright Chromium
 
-## Important: Python vs `.exe`
+The PyInstaller spec expects Chromium to be installed at:
 
-There are two different ways to run the project:
-
-### Run source code
-
-```cmd
-python main.py
+```text
+.venv\Lib\site-packages\playwright\driver\package\.local-browsers\
 ```
 
-In this mode, Playwright uses the browser installed for the current Python environment.
+The current Chromium executable is located under:
 
-### Run the built `.exe`
+```text
+chromium-1243\chrome-win64\chrome.exe
+```
+
+The build copies this browser into the PyInstaller application.
+
+The application also configures `PLAYWRIGHT_BROWSERS_PATH` automatically when running as a frozen PyInstaller application.
+
+Therefore, the generated EXE does not require the target computer to separately install Chromium or Playwright.
+
+## Running the EXE
+
+After a successful build:
 
 ```cmd
 dist\QuizletCrawler\QuizletCrawler.exe
 ```
 
-The `.exe` build includes the required Chromium browser through the PyInstaller configuration. Do not assume that installing Chromium globally on another machine will fix a missing browser inside an already-built application.
+Keep the entire directory together:
+
+```text
+dist\
+└── QuizletCrawler\
+    ├── QuizletCrawler.exe
+    ├── _internal\
+    └── playwright\
+        └── driver\
+            └── package\
+                └── .local-browsers\
+```
+
+Do not copy only `QuizletCrawler.exe`.
 
 ## Project Structure
 
@@ -169,17 +208,39 @@ quizlet-crawler/
     └── playwright_config.py
 ```
 
-## Gitignored Files
+## Git Ignore
 
-The following local/generated files should not be committed:
+Generated files such as `build/`, `dist/`, and `.venv/` are ignored by Git.
+
+`QuizletCrawler.spec` is **not** ignored because it is required to build the application and bundle Chromium.
+
+## Build Output
+
+The following should not be committed:
 
 ```text
-.venv/
 build/
 dist/
-*.spec
+.venv/
 __pycache__/
-*.py[cod]
+*.pyc
 ```
 
-Each developer creates their own `.venv` and installs dependencies from `requirements.txt`.
+The following build configuration files **must be committed**:
+
+```text
+QuizletCrawler.spec
+build.bat
+requirements.txt
+```
+
+## Git Workflow
+
+After updating the project:
+
+```cmd
+git status
+git add README.md requirements.txt .gitignore QuizletCrawler.spec build.bat src main.py
+git commit -m "fix: bundle Chromium and update project documentation"
+git push
+```

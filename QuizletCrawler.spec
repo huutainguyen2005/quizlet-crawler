@@ -4,7 +4,6 @@ from pathlib import Path
 import playwright
 
 from PyInstaller.building.build_main import Analysis, PYZ, EXE, COLLECT
-from PyInstaller.building.datastruct import Tree
 
 project_root = Path(SPEC).resolve().parent
 playwright_root = Path(playwright.__file__).resolve().parent
@@ -17,10 +16,12 @@ if not browser_root.exists():
         "run 'python -m playwright install chromium' first."
     )
 
-browser_datas = Tree(
-    str(browser_root),
-    prefix="playwright/driver/package/.local-browsers"
-)
+browser_datas = [
+    (
+        str(browser_root),
+        "playwright/driver/package/.local-browsers"
+    )
+]
 
 analysis = Analysis(
     [str(project_root / "main.py")],

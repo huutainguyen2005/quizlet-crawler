@@ -3,7 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual environment
+# Virtual Environment
 .venv/
 venv/
 env/
@@ -16,15 +16,14 @@ ENV/
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
 # Build
 build/
 dist/
 *.egg-info/
-*.spec
-!QuizletCrawler.spec
 
-# Test
+# Testing
 .pytest_cache/
 .coverage
 htmlcov/
@@ -32,18 +31,9 @@ htmlcov/
 # Logs
 *.log
 
-# Environment
+# Environment / Secrets
 .env
 .env.*
-
-# Output
-output/*.txt
-output/*.json
-output/*.csv
-
-# Temporary
-tmp/
-temp/
 
 # Python tooling
 .mypy_cache/
@@ -51,3 +41,20 @@ temp/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Temporary
+tmp/
+temp/
+
+# Generated output
+output/*.txt
+output/*.json
+output/*.csv
+
+# Editor temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+~$*
