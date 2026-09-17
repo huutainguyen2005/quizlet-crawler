@@ -14,6 +14,9 @@ question data and exporting it into A/B/C/D format.
 pip install -r requirements.txt
 ```
 
+```bash
+python -m playwright install chromium
+```
 ## Build .exe
 
 ```bash
